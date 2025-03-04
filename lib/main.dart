@@ -7,6 +7,7 @@ import 'user.dart';
 import 'report.dart'; // Import the new page
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'accidentdetection.dart';
 
 void main() async {
   try{
@@ -29,28 +30,9 @@ class MyApp extends StatelessWidget {
         '/settings': (context) => SettingsPage(),
         '/register': (context) => RegisterPage(),
         '/user': (context) => UserPage(),
-        '/accident_report': (context) => AccidentReportPage(),
+        //'/accident_report': (context) => _AccidentReportPageState(),
+        '/detect_accident': (context) => DetectAccidentPage(), 
       },
     );
   }
 }
-/*
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      initialRoute: 'home',
-      routes: {
-        'home': (context) => LoginRegisterPage(),
-        '/monitoring': (context) => MonitoringPage(),
-        '/settings': (context) => SettingsPage(),
-        '/register': (context) => RegisterPage(),
-        '/user': (context) => UserPage(),
-        '/accident_report': (context) => AccidentReportPage(), // Add new route
-      },
-    );
-  }
-}
-
-*/

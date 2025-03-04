@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
     <application
         android:label="accident_detection"
         android:name="${applicationName}"
@@ -32,6 +34,8 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <meta-data android:name="com.google.android.geo.API_KEY"
+                android:value="AIzaSyDszxdLHzHC_bxDfaipi9uIAEPGK1MWJ1M"/>
 
     </application>
     <!-- Required to query activities that can process text, see:

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 
 class AccidentReportPage extends StatefulWidget {
   @override
@@ -6,97 +10,377 @@ class AccidentReportPage extends StatefulWidget {
 }
 
 class _AccidentReportPageState extends State<AccidentReportPage> {
-  String? _severity;
   final TextEditingController _descriptionController = TextEditingController();
+  String? _severity;
+  File? _selectedImage;
+  bool _isSubmitting = false;
+
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? pickedFile = await _picker.pickImage(source: source);
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<String?> _uploadImageToFirebase() async {
+    if (_selectedImage == null) return null;
+
+    try {
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('images/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final uploadTask = storageRef.putFile(_selectedImage!);
+
+      final snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image upload failed: $e')),
+      );
+      return null;
+    }
+  }
+
+  Future<void> _submitReport() async {
+    if (_severity == null || _descriptionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please fill all fields and upload an image.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      String? imageUrl = await _uploadImageToFirebase();
+
+      await FirebaseFirestore.instance.collection('accident_reports').add({
+        'severity': _severity,
+        'description': _descriptionController.text,
+        'image_url': imageUrl,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Report submitted successfully!')),
+      );
+
+      _descriptionController.clear();
+      setState(() {
+        _severity = null;
+        _selectedImage = null;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to submit report: $e')),
+      );
+    } finally {
+      setState(() {
+        _isSubmitting = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Report an Accident'),
+        title: Text('Accident Report', style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        backgroundColor: Colors.blueAccent,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Select severity',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            DropdownButton<String>(
-              value: _severity,
-              hint: Text('Select severity'),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _severity = newValue;
-                });
-              },
-              items: <String>['Low', 'Medium', 'High']
-                  .map<DropdownMenuItem<String>>((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Briefly describe what happened',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            TextField(
-              controller: _descriptionController,
-              maxLines: 3,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Enter description',
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Severity', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      DropdownButton<String>(
+                        value: _severity,
+                        isExpanded: true,
+                        hint: Text('Select Severity'),
+                        items: ['Low', 'Moderate', 'High']
+                            .map((level) => DropdownMenuItem(
+                                  value: level,
+                                  child: Text(level),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _severity = value;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            SizedBox(height: 20),
-            Text(
-              'Upload Photo',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                // Implement photo upload functionality
-              },
-              child: Text('Upload Photo'),
-            ),
-            SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    // Clear form
-                    _descriptionController.clear();
-                    setState(() {
-                      _severity = null;
-                    });
-                  },
-                  child: Text('Clear Form'),
+              SizedBox(height: 16),
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Description', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      TextField(
+                        controller: _descriptionController,
+                        decoration: InputDecoration(
+                          hintText: 'Enter a brief description',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        maxLines: 3,
+                      ),
+                    ],
+                  ),
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    // Submit report
-                    if (_severity != null && _descriptionController.text.isNotEmpty) {
-                      // Implement submit functionality
-                      print('Report Submitted');
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Please fill all fields')),
-                      );
-                    }
-                  },
-                  child: Text('Submit Report'),
+              ),
+              SizedBox(height: 16),
+              Text('Upload Image:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              SizedBox(height: 8),
+              Row(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _pickImage(ImageSource.camera),
+                    icon: Icon(Icons.camera_alt),
+                    label: Text('Camera'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _pickImage(ImageSource.gallery),
+                    icon: Icon(Icons.photo),
+                    label: Text('Gallery'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16),
+              if (_selectedImage != null)
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Image.file(
+                    _selectedImage!,
+                    height: 200,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
                 ),
-              ],
-            ),
-          ],
+              SizedBox(height: 16),
+              Center(
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submitReport,
+                  child: _isSubmitting
+                      ? CircularProgressIndicator(color: Colors.white)
+                      : Text('Submit Report'),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                    backgroundColor: Colors.blueAccent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+
+/*
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
+
+class AccidentReportPage extends StatefulWidget {
+  @override
+  _AccidentReportPageState createState() => _AccidentReportPageState();
+}
+
+class _AccidentReportPageState extends State<AccidentReportPage> {
+  final TextEditingController _descriptionController = TextEditingController();
+  String? _severity;
+  File? _selectedImage;
+  bool _isSubmitting = false;
+
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? pickedFile = await _picker.pickImage(source: source);
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<String?> _uploadImageToFirebase() async {
+    if (_selectedImage == null) return null;
+
+    try {
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('images/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final uploadTask = storageRef.putFile(_selectedImage!);
+
+      final snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Image upload failed: $e')),
+      );
+      return null;
+    }
+  }
+
+  Future<void> _submitReport() async {
+    if (_severity == null || _descriptionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please fill all fields and upload an image.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      String? imageUrl = await _uploadImageToFirebase();
+
+      await FirebaseFirestore.instance.collection('accident_reports').add({
+        'severity': _severity,
+        'description': _descriptionController.text,
+        'image_url': imageUrl,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Report submitted successfully!')),
+      );
+
+      _descriptionController.clear();
+      setState(() {
+        _severity = null;
+        _selectedImage = null;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to submit report: $e')),
+      );
+    } finally {
+      setState(() {
+        _isSubmitting = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Accident Report'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Severity:', style: TextStyle(fontSize: 16)),
+              DropdownButton<String>(
+                value: _severity,
+                isExpanded: true,
+                hint: Text('Select Severity'),
+                items: ['Low', 'Moderate', 'High']
+                    .map((level) => DropdownMenuItem(
+                          value: level,
+                          child: Text(level),
+                        ))
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _severity = value;
+                  });
+                },
+              ),
+              SizedBox(height: 16),
+              TextField(
+                controller: _descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              SizedBox(height: 16),
+              Text('Upload Image:', style: TextStyle(fontSize: 16)),
+              Row(
+                children: [
+                  ElevatedButton(
+                    onPressed: () => _pickImage(ImageSource.camera),
+                    child: Text('Use Camera'),
+                  ),
+                  SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () => _pickImage(ImageSource.gallery),
+                    child: Text('Choose from Gallery'),
+                  ),
+                ],
+              ),
+              if (_selectedImage != null) ...[
+                SizedBox(height: 16),
+                Image.file(
+                  _selectedImage!,
+                  height: 200,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ],
+              SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _isSubmitting ? null : _submitReport,
+                child: _isSubmitting
+                    ? CircularProgressIndicator(color: Colors.white)
+                    : Text('Submit Report'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+*/
