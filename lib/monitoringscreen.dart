@@ -137,15 +137,10 @@ Future<void> callServices(BuildContext context) async {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('History'),
-                onTap: () {},
-              ),
-              ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('Log Out'),
                 onTap: () {
-                  Navigator.pushNamed(context, '/home');
+                  Navigator.pushNamed(context, '/');
                 },
               ),
             ],

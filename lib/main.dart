@@ -4,7 +4,7 @@ import 'login.dart';
 import 'settings.dart';
 import 'registerpage.dart';
 import 'user.dart';
-import 'report.dart'; // Import the new page
+import 'report.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'accidentdetection.dart';
@@ -23,14 +23,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      initialRoute: '/',  // Changed from 'home' to '/'
+      initialRoute: '/',
       routes: {
         '/': (context) => LoginRegisterPage(),  // Changed from 'home'
         '/monitoring': (context) => MonitoringPage(),
         '/settings': (context) => SettingsPage(),
         '/register': (context) => RegisterPage(),
         '/user': (context) => UserPage(),
-        //'/accident_report': (context) => _AccidentReportPageState(),
         '/detect_accident': (context) => DetectAccidentPage(), 
       },
     );
