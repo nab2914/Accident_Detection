@@ -1,5 +1,5 @@
-
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() {
   runApp(MyApp());
@@ -24,12 +24,6 @@ class UserPage extends StatelessWidget {
       appBar: AppBar(
         title: Text("User"),
         backgroundColor: Colors.lightBlueAccent,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -67,8 +61,6 @@ class UserPage extends StatelessWidget {
                 );
               },
             ),
-            //UserOption(icon: Icons.security, text: 'Insurance Details'),
-            //UserOption(icon: Icons.local_hospital, text: 'Medical Details'),
             UserOption(
               icon: Icons.security,
               text: 'Insurance Details',
@@ -80,21 +72,6 @@ class UserPage extends StatelessWidget {
                 );
               },
             ),
-
-            /*SizedBox(height: 30),
-            ElevatedButton.icon(
-              onPressed: () {
-                // Handle emergency contacts
-              },
-              icon: Icon(Icons.contact_phone),
-              label: Text('Emergency Contacts'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-                textStyle: TextStyle(fontSize: 16),
-              ),
-            ),*/
           ],
         ),
       ),
@@ -132,12 +109,12 @@ class VehicleDetailsPage extends StatefulWidget {
 }
 
 class _VehicleDetailsPageState extends State<VehicleDetailsPage> {
-  final TextEditingController rcNoController = TextEditingController();
-  final TextEditingController vehicleRegController = TextEditingController();
-  final TextEditingController modelController = TextEditingController();
-  final TextEditingController ownerNameController = TextEditingController();
-  final TextEditingController insuranceController = TextEditingController();
-  final TextEditingController fuelTypeController = TextEditingController();
+final TextEditingController rcNoController = TextEditingController();
+final TextEditingController vehicleRegController = TextEditingController();
+final TextEditingController modelController = TextEditingController();
+final TextEditingController ownerNameController = TextEditingController();
+final TextEditingController fuelTypeController = TextEditingController();
+
 
   @override
   Widget build(BuildContext context) {
@@ -157,16 +134,12 @@ class _VehicleDetailsPageState extends State<VehicleDetailsPage> {
               _buildTextField("Vehicle Registration", vehicleRegController),
               _buildTextField("Model", modelController),
               _buildTextField("Owner Name", ownerNameController),
-              //_buildTextField("Insurance Details", insuranceController),
               _buildTextField("Fuel Type", fuelTypeController),
               SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text("Vehicle data added successfully!")),
-                    );
+                    _submitVehicleDetails(context);
                   },
                   child: Text("Submit"),
                 ),
@@ -190,7 +163,76 @@ class _VehicleDetailsPageState extends State<VehicleDetailsPage> {
       ),
     );
   }
+
+  void _submitVehicleDetails(BuildContext context) async {
+    String rcNumber = rcNoController.text;
+    String registration = vehicleRegController.text;
+    String model = modelController.text;
+    String owner = ownerNameController.text;
+    String fuel = fuelTypeController.text;
+
+    if (rcNumber.isEmpty ||
+        registration.isEmpty ||
+        model.isEmpty ||
+        owner.isEmpty ||
+        fuel.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please fill out all fields")),
+      );
+      return;
+    }
+
+    try {
+      // Save data to Firebase Firestore
+      await FirebaseFirestore.instance.collection('vehicleDetails').add({
+        'rcNumber': rcNumber,
+        'registration': registration,
+        'model': model,
+        'owner': owner,
+        'fuelType': fuel,
+        'timestamp': FieldValue.serverTimestamp(), // Optional for sorting
+      });
+
+      // Show success dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text("Vehicle Details Submitted"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("RC Number: $rcNumber"),
+              Text("Registration: $registration"),
+              Text("Model: $model"),
+              Text("Owner: $owner"),
+              Text("Fuel Type: $fuel"),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text("OK"),
+            )
+          ],
+        ),
+      );
+
+      // Clear the input fields after submission
+      rcNoController.clear();
+      vehicleRegController.clear();
+      modelController.clear();
+      ownerNameController.clear();
+      fuelTypeController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to save data: $e")),
+      );
+    }
+  }
 }
+
 
 class PersonalDetailsPage extends StatefulWidget {
   @override
@@ -199,13 +241,9 @@ class PersonalDetailsPage extends StatefulWidget {
 
 class _PersonalDetailsPageState extends State<PersonalDetailsPage> {
   final TextEditingController nameController = TextEditingController();
-  final TextEditingController genderController = TextEditingController();
-  final TextEditingController bloodGroupController = TextEditingController();
   final TextEditingController dobController = TextEditingController();
-  final TextEditingController phoneController = TextEditingController();
-  final TextEditingController addressController = TextEditingController();
   final TextEditingController emailController = TextEditingController();
-  final TextEditingController ageController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -222,22 +260,14 @@ class _PersonalDetailsPageState extends State<PersonalDetailsPage> {
             children: [
               SizedBox(height: 20),
               _buildTextField("Name", nameController),
-              _buildTextField("Gender", genderController),
-              _buildTextField("Blood Group", bloodGroupController),
               _buildTextField("Date of Birth", dobController),
-              _buildTextField("Phone Number", phoneController),
-              _buildTextField("Address", addressController),
               _buildTextField("Email", emailController),
-              _buildTextField("Age", ageController),
+              _buildTextField("Phone", phoneController),
               SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content:
-                              Text("Personal details added successfully!")),
-                    );
+                    _submitPersonalDetails(context);
                   },
                   child: Text("Submit"),
                 ),
@@ -261,7 +291,44 @@ class _PersonalDetailsPageState extends State<PersonalDetailsPage> {
       ),
     );
   }
+
+  Future<void> _submitPersonalDetails(BuildContext context) async {
+    String name = nameController.text;
+    String dob = dobController.text;
+    String email = emailController.text;
+    String phone = phoneController.text;
+
+    if (name.isEmpty || dob.isEmpty || email.isEmpty || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please fill out all fields")),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('personalDetails').add({
+        'name': name,
+        'dob': dob,
+        'email': email,
+        'phone': phone,
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Details submitted successfully!")),
+      );
+
+      nameController.clear();
+      dobController.clear();
+      emailController.clear();
+      phoneController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error submitting details: $e")),
+      );
+    }
+  }
 }
+
 
 class MedicalDetailsPage extends StatefulWidget {
   @override
@@ -269,13 +336,9 @@ class MedicalDetailsPage extends StatefulWidget {
 }
 
 class _MedicalDetailsPageState extends State<MedicalDetailsPage> {
-  final TextEditingController medicalConditionController =
-      TextEditingController();
+  final TextEditingController bloodGroupController = TextEditingController();
   final TextEditingController allergiesController = TextEditingController();
-  final TextEditingController medicationsController = TextEditingController();
-  final TextEditingController emergencyContactController =
-      TextEditingController();
-  final TextEditingController doctorNameController = TextEditingController();
+  final TextEditingController medicalHistoryController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -291,19 +354,14 @@ class _MedicalDetailsPageState extends State<MedicalDetailsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(height: 20),
-              _buildTextField("Medical Conditions", medicalConditionController),
+              _buildTextField("Blood Group", bloodGroupController),
               _buildTextField("Allergies", allergiesController),
-              _buildTextField("Medications", medicationsController),
-              _buildTextField("Emergency Contact", emergencyContactController),
-              _buildTextField("Doctor's Name", doctorNameController),
+              _buildTextField("Medical History", medicalHistoryController),
               SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text("Medical details added successfully!")),
-                    );
+                    _submitMedicalDetails(context);
                   },
                   child: Text("Submit"),
                 ),
@@ -327,7 +385,42 @@ class _MedicalDetailsPageState extends State<MedicalDetailsPage> {
       ),
     );
   }
+
+  Future<void> _submitMedicalDetails(BuildContext context) async {
+    String bloodGroup = bloodGroupController.text;
+    String allergies = allergiesController.text;
+    String medicalHistory = medicalHistoryController.text;
+
+    if (bloodGroup.isEmpty || allergies.isEmpty || medicalHistory.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please fill out all fields")),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseFirestore.instance.collection('medicalDetails').add({
+        'bloodGroup': bloodGroup,
+        'allergies': allergies,
+        'medicalHistory': medicalHistory,
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Details submitted successfully!")),
+      );
+
+      bloodGroupController.clear();
+      allergiesController.clear();
+      medicalHistoryController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error submitting details: $e")),
+      );
+    }
+  }
 }
+
+
 
 class InsuranceDetailsPage extends StatefulWidget {
   @override
@@ -335,11 +428,11 @@ class InsuranceDetailsPage extends StatefulWidget {
 }
 
 class _InsuranceDetailsPageState extends State<InsuranceDetailsPage> {
+  final TextEditingController insuranceProviderController =
+      TextEditingController();
   final TextEditingController policyNumberController = TextEditingController();
-  final TextEditingController providerNameController = TextEditingController();
-  final TextEditingController coverageController = TextEditingController();
-  final TextEditingController expiryDateController = TextEditingController();
-  final TextEditingController contactController = TextEditingController();
+  final TextEditingController coverageAmountController =
+      TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -355,20 +448,14 @@ class _InsuranceDetailsPageState extends State<InsuranceDetailsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(height: 20),
+              _buildTextField("Insurance Provider", insuranceProviderController),
               _buildTextField("Policy Number", policyNumberController),
-              _buildTextField("Provider Name", providerNameController),
-              _buildTextField("Coverage Details", coverageController),
-              _buildTextField("Expiry Date", expiryDateController),
-              _buildTextField("Contact Number", contactController),
+              _buildTextField("Coverage Amount", coverageAmountController),
               SizedBox(height: 20),
               Center(
                 child: ElevatedButton(
                   onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content:
-                              Text("Insurance details added successfully!")),
-                    );
+                    _submitInsuranceDetails(context);
                   },
                   child: Text("Submit"),
                 ),
@@ -391,5 +478,71 @@ class _InsuranceDetailsPageState extends State<InsuranceDetailsPage> {
         ),
       ),
     );
+  }
+
+  void _submitInsuranceDetails(BuildContext context) async {
+    String insuranceProvider = insuranceProviderController.text;
+    String policyNumber = policyNumberController.text;
+    String coverageAmount = coverageAmountController.text;
+
+    if (insuranceProvider.isEmpty ||
+        policyNumber.isEmpty ||
+        coverageAmount.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Please fill out all fields")),
+      );
+      return;
+    }
+
+    try {
+      // Save data to Firebase Firestore
+      await FirebaseFirestore.instance.collection('insuranceDetails').add({
+        'insuranceProvider': insuranceProvider,
+        'policyNumber': policyNumber,
+        'coverageAmount': coverageAmount,
+        'timestamp': FieldValue.serverTimestamp(), // Optional for sorting
+      });
+
+      // Show success dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text("Insurance Details Submitted"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("Insurance Provider: $insuranceProvider"),
+              Text("Policy Number: $policyNumber"),
+              Text("Coverage Amount: $coverageAmount"),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: Text("OK"),
+            )
+          ],
+        ),
+      );
+
+      // Clear the fields after submission
+      insuranceProviderController.clear();
+      policyNumberController.clear();
+      coverageAmountController.clear();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to save data: $e")),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    insuranceProviderController.dispose();
+    policyNumberController.dispose();
+    coverageAmountController.dispose();
+    super.dispose();
   }
 }

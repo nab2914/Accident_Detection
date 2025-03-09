@@ -4,10 +4,11 @@ import 'login.dart';
 import 'settings.dart';
 import 'registerpage.dart';
 import 'user.dart';
-import 'report.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'accidentdetection.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 void main() async {
   try{
@@ -17,7 +18,6 @@ void main() async {
   }catch(e){debugPrint('Initialization failed: $e');}
   runApp(MyApp());
 }
-// In main.dart (keep the rest as is)
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -25,12 +25,32 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
       routes: {
-        '/': (context) => LoginRegisterPage(),  // Changed from 'home'
+        '/': (context) => AuthWrapper(),
         '/monitoring': (context) => MonitoringPage(),
         '/settings': (context) => SettingsPage(),
         '/register': (context) => RegisterPage(),
         '/user': (context) => UserPage(),
         '/detect_accident': (context) => DetectAccidentPage(), 
+      },
+    );
+  }
+}
+class AuthWrapper extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return CircularProgressIndicator(); // Show loading indicator
+        }
+
+        // Redirect based on authentication state
+        if (snapshot.hasData) {
+          return MonitoringPage(); // User is logged in
+        } else {
+          return LoginRegisterPage(); // User is not logged in
+        }
       },
     );
   }

@@ -15,7 +15,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _changePassword() async {
     try {
-      // Example: Send a password reset email
       await _auth.sendPasswordResetEmail(email: _auth.currentUser!.email!);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Password reset email sent!')),
@@ -50,7 +49,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       body: ListView(
         children: [
-          // Manage Account (Expandable)
+          // Manage Account 
           ExpansionTile(
             leading: Icon(Icons.person, color: isDarkMode ? Colors.white : Colors.black),
             title: Text('Manage Account', style: TextStyle(color: isDarkMode ? Colors.white : Colors.black)),

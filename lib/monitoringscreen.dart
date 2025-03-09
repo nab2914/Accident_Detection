@@ -6,7 +6,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'report.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:async'; // Add this for StreamSubscription
+import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class MonitoringPage extends StatefulWidget {
   const MonitoringPage({super.key});
@@ -70,7 +71,7 @@ class _MonitoringPageState extends State<MonitoringPage> {
   }
 
 Future<void> callServices(BuildContext context) async {
-  const emergencyNumber = '+917994160886'; // Replace with the emergency number you need
+  const emergencyNumber = '+917994160886'; 
   final uri = Uri.parse('tel:$emergencyNumber');
 
   if (await Permission.phone.request().isGranted) {
@@ -88,9 +89,7 @@ Future<void> callServices(BuildContext context) async {
     );
   }
 }
-
-  @override
-  Widget build(BuildContext context) {
+Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("System Monitoring"),
@@ -139,8 +138,13 @@ Future<void> callServices(BuildContext context) async {
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('Log Out'),
-                onTap: () {
-                  Navigator.pushNamed(context, '/');
+                onTap: () async {
+                  await FirebaseAuth.instance.signOut();
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/',
+                    (Route<dynamic> route) => false,
+                  );
                 },
               ),
             ],
@@ -202,61 +206,75 @@ Future<void> callServices(BuildContext context) async {
               ),
               const SizedBox(height: 40),
               ElevatedButton.icon(
-                onPressed: isMonitoring ? () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => AccidentReportPage()),
-          );
-        }
-      : null,
+                onPressed: isMonitoring
+                    ? () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => AccidentReportPage()),
+                        );
+                      }
+                    : null,
                 icon: const Icon(LucideIcons.alertTriangle),
                 label: const Text('Report Accident'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 50, vertical: 15),
-                  textStyle: const TextStyle(fontSize: 16),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                  textStyle: const TextStyle(
+                    fontSize: 17,
+                    color: Colors.white, // Updated text color
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
-  onPressed: () => callServices(context), // No need to check `isMonitoring` here unless required
-  icon: const Icon(LucideIcons.phoneCall),
-  label: const Text('Call Services'),
-  style: ElevatedButton.styleFrom(
-    backgroundColor: Colors.green,
-    padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-    textStyle: const TextStyle(fontSize: 16),
-  ),
-),
-
+                onPressed: () => callServices(context),
+                icon: const Icon(LucideIcons.phoneCall),
+                label: const Text('Call Services'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                  textStyle: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white, // Updated text color
+                  ),
+                ),
+              ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (context) => LocationPage()),
+                    MaterialPageRoute(builder: (context) => LocationPage()),
                   );
                 },
                 icon: const Icon(LucideIcons.mapPin),
                 label: const Text('Current Location'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueAccent,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 50, vertical: 15),
-                  textStyle: const TextStyle(fontSize: 16),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                  textStyle: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white, // Updated text color
+                  ),
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 25),
               ElevatedButton(
                 onPressed: isMonitoring ? stopMonitoring : startMonitoring,
-                child: Text(isMonitoring ? "Stop Monitoring" : "Start Monitoring"),
+                child: Text(
+                  isMonitoring ? "Stop Monitoring" : "Start Monitoring",
+                  style: const TextStyle(color: Colors.white,fontWeight: FontWeight.bold), // Updated text color
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
                       isMonitoring ? Colors.orange : Colors.lightBlueAccent,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 50, vertical: 15),
+                  padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                 ),
               ),
             ],

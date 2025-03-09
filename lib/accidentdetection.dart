@@ -1,13 +1,9 @@
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
-import 'currentlocation.dart';
-import 'automatemge.dart';
+
 
 class DetectAccidentPage extends StatefulWidget {
   @override
@@ -21,24 +17,38 @@ class _DetectAccidentPageState extends State<DetectAccidentPage> {
   int countdownSeconds = 10;
   String? accidentDetails;
 
+Future<void> checkAndRequestPermissions() async {
+  if (await Permission.sms.isDenied) {
+    await Permission.sms.request();
+  }
+  if (await Permission.location.isDenied) {
+    await Permission.location.request();
+  }
+}
   @override
   void initState() {
     super.initState();
+    checkAndRequestPermissions();
     listenForAccidents();
   }
-  
-  void listenForAccidents() {
-    database.child('accidents').onChildAdded.listen((event) {
-      if (event.snapshot.exists) {
+
+String? lastAccidentKey;
+
+void listenForAccidents() {
+  database.child('accidents').onChildAdded.listen((event) {
+    if (event.snapshot.exists) {
+      final accidentKey = event.snapshot.key;
+      if (accidentKey != lastAccidentKey) {
+        lastAccidentKey = accidentKey;
         setState(() {
           accidentDetected = true;
           accidentDetails = event.snapshot.value.toString();
         });
         startCountdown();
       }
-    });
-  }
-
+    }
+  });
+}
 
 /*
 SmsSender smsSender = SmsSender();
@@ -93,59 +103,7 @@ void sendEmergencySMS() async {
   }
 }
 */
-
 /*
-void sendEmergencySMS() async {
-  String recipient = "+919061931671";
-  String message;
-
-  try {
-    // Fetch the current location
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
-    // Create a Google Maps URL with the location
-    String locationUrl =
-        "https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}";
-
-    // Prepare the SMS message
-    message = Uri.encodeComponent(
-        'Accident detected! Current location: $locationUrl');
-  } catch (e) {
-    // Fallback message if location fetching fails
-    message = Uri.encodeComponent(
-        'Accident detected! Location could not be fetched.');
-    print("Error fetching location: $e");
-  }
-
-  // Create the SMS URI
-  Uri smsUri = Uri.parse('sms:$recipient?body=$message');
-
-  try {
-    // Check if the URI can be launched
-    if (await canLaunchUrl(smsUri)) {
-      // Launch the SMS application
-      await launchUrl(smsUri, mode: LaunchMode.externalApplication);
-      print("SMS intent sent successfully to $recipient");
-    } else {
-      print("Could not launch SMS URI");
-    }
-  } catch (e) {
-    print("Error sending SMS: $e");
-  }
-}
-
-
-// Helper function to request SMS permissions
-Future<bool> requestSMSPermissions() async {
-  var status = await Permission.sms.status;
-  if (!status.isGranted) {
-    status = await Permission.sms.request();
-  }
-  return status.isGranted;
-}
-
-*/
 Future<void> sendEmergencySms() async {
     try {
       const platform = MethodChannel('sendSms');
@@ -157,21 +115,49 @@ Future<void> sendEmergencySms() async {
       debugPrint("Error sending SMS: $e");
     }
   }
-  void startCountdown() {
-    final targetTime = DateTime.now().add(Duration(seconds: countdownSeconds));
-    countdownTimer = Timer.periodic(Duration(milliseconds: 500), (timer) {
-      setState(() {
-        final remaining = targetTime.difference(DateTime.now()).inSeconds;
-        if (remaining > 0) {
-          countdownSeconds = remaining;
-        } else {
-          timer.cancel();
-          sendEmergencySms();
+  */
+  bool smsSent = false;
 
-        }
-      });
-    });
+void sendEmergencySms() async {
+  if (smsSent) {
+    debugPrint("SMS already sent, skipping...");
+    return;
   }
+  try {
+    const platform = MethodChannel('sendSms');
+    final result = await platform.invokeMethod('sendSms', {
+      'phone': '+919061931671',
+      'message': 'Accident detected! Help required.',
+    });
+    smsSent = true; 
+    debugPrint(result);
+  } catch (e) {
+    debugPrint("Error sending SMS: $e");
+  }
+}
+
+void startCountdown() {
+  bool smsSent = false;
+  final targetTime = DateTime.now().add(Duration(seconds: countdownSeconds));
+  countdownTimer = Timer.periodic(Duration(milliseconds: 500), (timer) {
+    setState(() {
+      final now = DateTime.now();
+      final remainingMillis = targetTime.difference(now).inMilliseconds;
+
+      if (remainingMillis > 0) {
+        countdownSeconds = (remainingMillis / 1000).ceil(); 
+      } else {
+        timer.cancel();
+        if (!smsSent) {
+          sendEmergencySms();
+          smsSent = true;
+        }
+      }
+    });
+  });
+}
+
+
 
   @override
   void dispose() {
@@ -216,12 +202,14 @@ Future<void> sendEmergencySms() async {
                         onPressed: () {
                           setState(() {
                             accidentDetected = false;
+                            smsSent = false;
                             countdownSeconds = 10; // Reset countdown
                             countdownTimer?.cancel();
                           });
                         },
                         style: ElevatedButton.styleFrom(iconColor: Colors.green),
                         child: Text("I'm Okay"),
+                        
                       ),
                     ],
                   ),
