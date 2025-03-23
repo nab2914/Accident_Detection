@@ -19,6 +19,266 @@ class _MonitoringPageState extends State<MonitoringPage> {
   final DatabaseReference database = FirebaseDatabase.instance.ref();
   String systemStatus = "Checking...";
   bool isMonitoring = false;
+  bool isAccidentDetected = false; // Track if already in detection mode
+
+  @override
+  void initState() {
+    super.initState();
+    startMonitoring();
+  }
+
+  void startMonitoring() {
+    final DatabaseReference accelerationRef = database.child('accidents/acceleration');
+    final DatabaseReference gyroscopeRef = database.child('accidents/gyroscope');
+
+    // Listen for new data under 'acceleration'
+    accelerationRef.onChildAdded.listen((DatabaseEvent event) {
+      handleNewData(event.snapshot.value, 'Acceleration');
+    });
+
+    // Listen for new data under 'gyroscope'
+    gyroscopeRef.onChildAdded.listen((DatabaseEvent event) {
+      handleNewData(event.snapshot.value, 'Gyroscope');
+    });
+
+    Future.delayed(const Duration(seconds: 2), () {
+      setState(() {
+        systemStatus = "Active";
+        isMonitoring = true;
+      });
+    });
+  }
+
+  void handleNewData(dynamic newValue, String source) {
+    if (newValue != null && !isAccidentDetected) {
+      print("New $source data detected: $newValue");
+      setState(() {
+        isAccidentDetected = true; // Prevent multiple navigations
+      });
+      navigateToAccidentDetectionPage();
+    }
+  }
+
+  void navigateToAccidentDetectionPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => DetectAccidentPage()),
+    ).then((_) {
+      // Reset accident detection state on page return
+      setState(() {
+        isAccidentDetected = false;
+      });
+    });
+  }
+
+  void stopMonitoring() {
+    setState(() {
+      systemStatus = "Inactive";
+      isMonitoring = false;
+    });
+  }
+
+  Future<void> callServices(BuildContext context) async {
+    const emergencyNumber = '+917994160886';
+    final uri = Uri.parse('tel:$emergencyNumber');
+
+    if (await Permission.phone.request().isGranted) {
+      try {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error making call: $e')),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Permission to make calls was denied')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("System Monitoring"),
+        backgroundColor: Colors.lightBlueAccent,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer();
+            },
+          ),
+        ),
+      ),
+      drawer: buildDrawer(context),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              buildMonitoringStatusCard(),
+              const SizedBox(height: 40),
+              buildActionButtons(context),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildDrawer(BuildContext context) {
+    return Drawer(
+      child: Container(
+        color: Colors.lightBlue.shade100,
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: <Widget>[
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Colors.lightBlue.shade300,
+              ),
+              child: const Text(
+                'Menu',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('User'),
+              onTap: () {
+                Navigator.pushNamed(context, '/user');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pushNamed(context, '/settings');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Log Out'),
+              onTap: () async {
+                await FirebaseAuth.instance.signOut();
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/',
+                  (Route<dynamic> route) => false,
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildMonitoringStatusCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.lightBlue, Colors.lightBlueAccent],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.5),
+            spreadRadius: 5,
+            blurRadius: 7,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            LucideIcons.activity,
+            size: 50,
+            color: Colors.white,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'System Monitoring',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Status: $systemStatus',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: Colors.yellowAccent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildActionButtons(BuildContext context) {
+    return Column(
+      children: [
+        ElevatedButton.icon(
+          onPressed: isMonitoring
+              ? () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => AccidentReportPage()),
+                  );
+                }
+              : null,
+          icon: const Icon(LucideIcons.alertTriangle),
+          label: const Text('Report Accident'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+            textStyle: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        ElevatedButton.icon(
+          onPressed: () => callServices(context),
+          icon: const Icon(LucideIcons.phoneCall),
+          label: const Text('Call Services'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+            textStyle: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/*
+class _MonitoringPageState extends State<MonitoringPage> {
+  final DatabaseReference database = FirebaseDatabase.instance.ref();
+  String systemStatus = "Checking...";
+  bool isMonitoring = false;
 
   @override
  void initState() {
@@ -284,3 +544,4 @@ Widget build(BuildContext context) {
     );
   }
 }
+*/
