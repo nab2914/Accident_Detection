@@ -4,6 +4,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:geolocator/geolocator.dart';
 
 
  class DetectAccidentPage extends StatefulWidget {
@@ -38,40 +39,44 @@ class _DetectAccidentPageState extends State<DetectAccidentPage> {
     await [Permission.sms, Permission.location].request();
   }
 void _listenForAccidents() {
-  final DatabaseReference accidentRef = database.child("accidents/acceleration");
+  final DatabaseReference accelerationRef = database.child("accidents/acceleration");
+  final DatabaseReference gyroscopeRef = database.child("accidents/gyroscope");
 
-  accidentRef.onChildAdded.listen((event) {
-    if (event.snapshot.exists) {
+  void handleAccidentEvent(DatabaseEvent event, String sensorType) {
+    if (event.snapshot.exists && isInitialDataLoaded) {
       final accidentKey = event.snapshot.key;
       final accidentData = event.snapshot.value as Map<dynamic, dynamic>?;
 
-      if (accidentData == null || !accidentData.containsKey('timestamp') || !accidentData.containsKey('value')) {
-        print("Invalid accident data.");
+      if (accidentData == null || 
+          !accidentData.containsKey('timestamp') || 
+          !accidentData.containsKey('value')) {
+        print("Invalid $sensorType accident data.");
         return;
       }
 
       final String timestampString = accidentData['timestamp'] as String;
       final double? value = double.tryParse(accidentData['value'].toString());
 
-      if (value == null || (isInitialDataLoaded && accidentKey == lastAccidentKey)) {
+      if (value == null || accidentKey == lastAccidentKey) {
         return;
       }
 
-      if (isInitialDataLoaded) {
-        setState(() {
-          accidentDetected = true; // Switch to accident timer page
-          accidentDetails = "Value: $value\nTime: $timestampString";
-          lastAccidentKey = accidentKey;
-        });
+      setState(() {
+        accidentDetected = true; // Switch to accident timer page
+        accidentDetails = "Sensor: $sensorType\nValue: $value\nTime: $timestampString";
+        lastAccidentKey = accidentKey;
+      });
 
-        print("Accident detected: $accidentDetails");
-        _startCountdown();
-      }
+      print("Accident detected from $sensorType: $accidentDetails");
+      _startCountdown();
     }
-  });
+  }
 
-  // Ensure the initial data load doesn't interfere
-  accidentRef.once().then((_) {
+  accelerationRef.onChildAdded.listen((event) => handleAccidentEvent(event, "Acceleration"));
+  gyroscopeRef.onChildAdded.listen((event) => handleAccidentEvent(event, "Gyroscope"));
+
+  // Ensure the initial data load doesn't trigger accident detection
+  Future.wait([accelerationRef.once(), gyroscopeRef.once()]).then((_) {
     setState(() {
       isInitialDataLoaded = true;
     });
@@ -82,7 +87,7 @@ void _listenForAccidents() {
 }
 
 
-
+/*
 void _startCountdown() async {
   print("Countdown started"); // Debug log
   smsSent = false;
@@ -115,21 +120,89 @@ void _startCountdown() async {
     });
   });
 }
+*/
+void _startCountdown() async {
+  print("Countdown started");
+  smsSent = false;
+  countdownTimer?.cancel();
+  countdownSeconds = 10;
+
+  // Play the alarm sound
+  final player = AudioPlayer();
+  try {
+    print("Attempting to play sound");
+    await player.play(AssetSource('alarm_sound.mp3'));
+    print("Sound played successfully");
+  } catch (e) {
+    print("Error playing sound: $e");
+  }
+
+  countdownTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+    setState(() {
+      if (countdownSeconds > 0) {
+        countdownSeconds--;
+        print("Countdown: $countdownSeconds");
+      } else {
+        timer.cancel();
+        if (!smsSent) {
+          smsSent = true;
+          _sendEmergencySms();
+          print("SMS sent");
+          mapLocationToFirebase(); // Send location data to Firebase
+        }
+      }
+    });
+  });
+}
+
+
+Future<void> mapLocationToFirebase() async {
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref("user_locations");
+
+  try {
+    // Request location permission
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always) {
+      // Get current location
+      Position position = await Geolocator.getCurrentPosition();
+
+      // Push location to Firebase
+      await dbRef.push().set({
+        "latitude": position.latitude,
+        "longitude": position.longitude,
+        "timestamp": DateTime.now().toIso8601String(),
+      });
+
+      print("Location added to Firebase!");
+    } else {
+      print("Location permission denied!");
+    }
+  } catch (e) {
+    print("Error: $e");
+  }
+}
+
 
 
 
   Future<void> _sendEmergencySms() async {
-    const platform = MethodChannel('sendSms');
-    try {
-      final result = await platform.invokeMethod('sendSms', {
-        'phone': '<emergency_contact>',
-        'message': "Accident detected at $accidentDetails",
-      });
-      print("SMS sent: $result");
-    } catch (e) {
-      print("Error sending SMS: $e");
-    }
+  const platform = MethodChannel('sendSms');
+  try {
+    // Call the 'fetchNearestContact' method from MainActivity
+    final result = await platform.invokeMethod('fetchNearestContact');
+    
+    print("Result from native: $result");
+  } catch (e) {
+    print("Error fetching and sending SMS: $e");
   }
+}
+
 
   @override
  @override
@@ -176,12 +249,14 @@ Widget _buildAccidentTimerPage() {
                 setState(() {
                   accidentDetected = false;
                   countdownTimer?.cancel();
-                  countdownSeconds = 20; // Reset countdown
+                  countdownSeconds = 10; // Reset countdown
+                  smsSent = false;       // Reset SMS sent state
                 });
                 print("User marked safe.");
               },
               child: const Text("I'm Okay"),
             ),
+
           ],
         ),
       ),
@@ -206,243 +281,3 @@ Widget _buildMonitoringPage() {
 }
 
 }
-
-/*
-import 'package:flutter/services.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'dart:async';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:intl/intl.dart'; // For date and time parsing
-
-
-class DetectAccidentPage extends StatefulWidget {
-  @override
-  _DetectAccidentPageState createState() => _DetectAccidentPageState();
-}
-
-class _DetectAccidentPageState extends State<DetectAccidentPage> {
-  final DatabaseReference database = FirebaseDatabase.instance.ref();
-  bool accidentDetected = false;
-  Timer? countdownTimer;
-  int countdownSeconds = 10;
-  String? accidentDetails;
-
-Future<void> checkAndRequestPermissions() async {
-  if (await Permission.sms.isDenied) {
-    await Permission.sms.request();
-  }
-  if (await Permission.location.isDenied) {
-    await Permission.location.request();
-  }
-}
-  @override
-  void initState() {
-    super.initState();
-    checkAndRequestPermissions();
-    listenForAccidents();
-  }
-
-String? lastAccidentKey;
-
-void listenForAccidents() {
-  final DatabaseReference database = FirebaseDatabase.instance.ref("accidents/acceleration");
-
-  // Variables to track the last accident
-  String? lastAccidentKey;
-  int? lastAccidentTimestamp; // Timestamp in seconds
-  const int minTimeGap = 30; // Minimum time gap in seconds
-  bool isInitialDataLoaded = false; // Flag to handle pre-existing data
-
-  // Helper function to convert HH:mm:ss to seconds
-  int parseTimestampToSeconds(String timestamp) {
-    final format = DateFormat("HH:mm:ss");
-    final time = format.parse(timestamp);
-    return time.hour * 3600 + time.minute * 60 + time.second;
-  }
-
-  // Listen for new accidents in the database
-  database.onChildAdded.listen((event) {
-    if (event.snapshot.exists) {
-      final accidentKey = event.snapshot.key;
-      final accidentData = event.snapshot.value as Map<dynamic, dynamic>;
-
-      final String timestampString = accidentData['timestamp'] as String;
-      final double? value = double.tryParse(accidentData['value'].toString());
-
-      if (!isInitialDataLoaded) {
-        // Log initial data but don't act on it
-        print("Skipping pre-existing accident: $accidentKey");
-        return;
-      }
-
-      if (value != null) {
-        final int currentTimestamp = parseTimestampToSeconds(timestampString);
-
-        if (accidentKey != lastAccidentKey) {
-          // Check the time gap between the last accident and the current one
-          if (lastAccidentTimestamp == null ||
-              currentTimestamp - lastAccidentTimestamp! >= minTimeGap) {
-            // Update the last accident information
-            lastAccidentKey = accidentKey;
-            lastAccidentTimestamp = currentTimestamp;
-
-            // Perform UI updates or actions
-            setState(() {
-              accidentDetected = true;
-              accidentDetails = "Accident detected!\nValue: $value\nTime: $timestampString";
-            });
-
-            print("Accident detected: $accidentDetails");
-
-            // Start a countdown to reset the UI or perform any other action
-            startCountdown();
-          } else {
-            print("Accident ignored due to time gap restriction.");
-          }
-        }
-      } else {
-        print("Invalid accident value.");
-      }
-    }
-  });
-
-  // Set the flag after loading the initial data
-  database.once().then((snapshot) {
-  print("Initial data loaded. Listening for new accidents...");
-  setState(() {
-    isInitialDataLoaded = true; // Update state after loading initial data
-  });
-}).catchError((error) {
-  print("Error loading initial data: $error");
-});
-
-}
-
-
-
- bool smsSent = false;
-
-void sendEmergencySms() async {
-  if (smsSent) {
-    debugPrint("SMS already sent, skipping...");
-    return;
-  }
-  try {
-    const platform = MethodChannel('sendSms');
-    final result = await platform.invokeMethod('sendSms', {
-
-    });
-    smsSent = true; 
-    debugPrint(result);
-  } catch (e) {
-    debugPrint("Error sending SMS: $e");
-  }
-}
-
-void startCountdown() {
-  smsSent = false; // Reset smsSent whenever a new countdown starts
-  final targetTime = DateTime.now().add(Duration(seconds: countdownSeconds));
-  countdownTimer = Timer.periodic(Duration(milliseconds: 500), (timer) {
-    setState(() {
-      final now = DateTime.now();
-      final remainingMillis = targetTime.difference(now).inMilliseconds;
-
-      if (remainingMillis > 0) {
-        countdownSeconds = (remainingMillis / 1000).ceil();
-      } else {
-        timer.cancel();
-        if (!smsSent) {
-          sendEmergencySms();
-          smsSent = true;
-        }
-      }
-    });
-  });
-}
-
-
-
-
-  @override
-  void dispose() {
-    countdownTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Accident Detection'),
-      ),
-      body: accidentDetected
-          ? Center(
-              child: Card(
-                margin: EdgeInsets.all(16),
-                elevation: 5,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                child: Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Accident Detected!',
-                        style: TextStyle(fontSize: 24, color: Colors.red, fontWeight: FontWeight.bold),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                      countdownSeconds > 1
-                          ? 'Sending Text message in: $countdownSeconds seconds'
-                          : 'Message Sent!',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: countdownSeconds > 1 ? Colors.blue : Colors.green,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                      SizedBox(height: 30),
-                     ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            accidentDetected = false;
-                            smsSent = true; // Prevent SMS from being sent
-                            countdownSeconds = 10; // Reset countdown
-                            countdownTimer?.cancel(); // Stop the timer
-                          });
-
-                          // Call the cancelEmergencySms method in the platform channel
-                          const platform = MethodChannel('sendSms');
-                          try {
-                            platform.invokeMethod('cancelEmergencySms'); // Notify MainActivity
-                          } catch (e) {
-                            debugPrint("Error canceling SMS: $e");
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(iconColor: Colors.green),
-                        child: Text("I'm Okay"),
-                      ),
-
-                    ],
-                  ),
-                ),
-              ),
-            )
-          : Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 20),
-                  Text(
-                    'Monitoring for accidents...',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
-}
-*/
