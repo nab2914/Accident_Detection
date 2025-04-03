@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:path/path.dart' as path;
 
 class AccidentReportPage extends StatefulWidget {
   @override
@@ -26,24 +28,42 @@ class _AccidentReportPageState extends State<AccidentReportPage> {
     }
   }
 
-  Future<String?> _uploadImageToFirebase() async {
-    if (_selectedImage == null) return null;
 
-    try {
-      final storageRef = FirebaseStorage.instance
-          .ref()
-          .child('images/${DateTime.now().millisecondsSinceEpoch}.jpg');
-      final uploadTask = storageRef.putFile(_selectedImage!);
 
-      final snapshot = await uploadTask;
-      return await snapshot.ref.getDownloadURL();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Image upload failed: $e')),
-      );
-      return null;
-    }
+Future<String?> _uploadImageToSupabase(File? selectedImage) async {
+  if (selectedImage == null || !selectedImage.existsSync()) {
+    print('No image selected or file does not exist.');
+    return null;
   }
+
+  try {
+    final fileName = path.basename(selectedImage.path);
+    final fileBytes = await selectedImage.readAsBytes();
+    final storagePath = 'images/$fileName';
+
+    print('Uploading file: $storagePath');
+
+    final response = await Supabase.instance.client.storage
+        .from('images')
+        .uploadBinary(
+          storagePath,
+          fileBytes,
+          fileOptions: FileOptions(cacheControl: '3600', upsert: true),
+        );
+
+    final publicUrl =
+        Supabase.instance.client.storage.from('images').getPublicUrl(storagePath);
+    print('Image uploaded successfully: $publicUrl');
+    return publicUrl;
+  } catch (e, stackTrace) {
+    print('Error during image upload: $e');
+    print('Stack Trace: $stackTrace');
+    return null;
+  }
+}
+
+
+
 
   Future<void> _submitReport() async {
     if (_severity == null || _descriptionController.text.isEmpty) {
@@ -58,7 +78,7 @@ class _AccidentReportPageState extends State<AccidentReportPage> {
     });
 
     try {
-      String? imageUrl = await _uploadImageToFirebase();
+        String? imageUrl = await _uploadImageToSupabase(_selectedImage);
 
       await FirebaseFirestore.instance.collection('accident_reports').add({
         'severity': _severity,
